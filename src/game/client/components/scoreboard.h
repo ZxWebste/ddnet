@@ -78,6 +78,7 @@ class CScoreboard : public CComponent
 	public:
 		char m_PlayerButtonId;
 		char m_SpectatorSecondLineButtonId;
+		char m_SkinButtonId;
 	};
 	CPlayerElement m_aPlayers[MAX_CLIENTS];
 
@@ -93,6 +94,9 @@ public:
 	bool OnInput(const IInput::CEvent &Event) override;
 
 	bool IsActive() const;
+	
+	int m_CopiedSkinClientId;
+	int64_t m_CopiedSkinTime;
 };
 
 #endif

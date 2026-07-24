@@ -111,6 +111,8 @@ void CScoreboard::OnReset()
 	m_Active = false;
 	m_MouseUnlocked = false;
 	m_LastMousePos = std::nullopt;
+	m_CopiedSkinClientId = -1;
+	m_CopiedSkinTime = 0;
 }
 
 void CScoreboard::OnRelease()
@@ -738,7 +740,20 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				if(m_MouseUnlocked)
 				{
 					const CUIRect SkinRect = {TeeOffset, Row.y, TeeLength, Row.h};
-					GameClient()->m_Tooltips.DoToolTip(&m_aPlayers[pInfo->m_ClientId].m_PlayerButtonId, &SkinRect, ClientData.m_aSkinName);
+
+					const char *pTooltipText = ClientData.m_aSkinName;
+					if(m_CopiedSkinClientId == pInfo->m_ClientId && time_get() < m_CopiedSkinTime + time_freq() * 1.5)
+					{
+						pTooltipText = Localize("Copied!");
+					}
+					GameClient()->m_Tooltips.DoToolTip(&m_aPlayers[pInfo->m_ClientId].m_SkinButtonId, &SkinRect, pTooltipText);
+
+					if(Ui()->DoButtonLogic(&m_aPlayers[pInfo->m_ClientId].m_SkinButtonId, 0, &SkinRect, BUTTONFLAG_LEFT))
+					{
+						Input()->SetClipboardText(ClientData.m_aSkinName);
+						m_CopiedSkinClientId = pInfo->m_ClientId;
+						m_CopiedSkinTime = time_get();
+					}
 				}
 			}
 
