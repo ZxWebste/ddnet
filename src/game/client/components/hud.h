@@ -42,6 +42,17 @@ struct SScoreInfo
 	bool m_Initialized;
 };
 
+struct CSwapState
+{
+	bool m_Active;
+	int m_FromClientId;
+	int m_ToClientId;
+	char m_aFromName[MAX_NAME_LENGTH];
+	char m_aToName[MAX_NAME_LENGTH];
+	int64_t m_Time;
+	int m_DelaySeconds;
+};
+
 class CHud : public CComponent
 {
 	float m_Width, m_Height;
@@ -169,6 +180,12 @@ private:
 	int m_PracticeModeOffset;
 	int m_Team0ModeOffset;
 	int m_LockModeOffset;
+
+public:
+	enum { MAX_SWAPS = 4 };
+	CSwapState m_aSwapStates[MAX_SWAPS];
+	int m_SwapTimeoutValue;
+	void RenderSwapNotification();
 };
 
 #endif

@@ -227,6 +227,11 @@ private:
 
 	void ProcessEvents();
 	void UpdatePositions();
+	void ProcessSwapMessage(const char *pMsg, int Conn);
+	void AddSwapRequest(const char *pFromName, const char *pToName, int FromCid, int ToCid, int Delay);
+	void RemoveSwapRequest(const char *pName1, const char *pName2);
+	int GetMainClientId() const;
+	int GetDummyClientId() const;
 
 	int m_EditorMovementDelay = 5;
 	void UpdateEditorIngameMoved();

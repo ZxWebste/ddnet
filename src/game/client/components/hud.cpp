@@ -41,6 +41,7 @@ CHud::CHud()
 		m_aPlayerPositionContainers[i].Reset();
 		m_aPlayerPrevPosition[i] = -INFINITY;
 	}
+	m_SwapTimeoutValue = 180;
 }
 
 void CHud::ResetHudContainers()
@@ -1746,6 +1747,7 @@ void CHud::OnRender()
 		GameClient()->m_Voting.Render();
 		if(g_Config.m_ClShowRecord)
 			RenderRecord();
+		RenderSwapNotification();
 	}
 	RenderCursor();
 }
@@ -1931,5 +1933,128 @@ void CHud::RenderRecord()
 			str_format(aBuf, sizeof(aBuf), "%s%s", PlayerRecord > 3600 ? "" : "   ", aTime);
 			TextRender()->Text(53, 82, 6, aBuf, -1.0f);
 		}
+	}
+}
+
+void CHud::RenderSwapNotification()
+{
+	int ActiveCount = 0;
+	int MaxSwaps = g_Config.m_ClMaxSwaps == 0 ? MAX_SWAPS : g_Config.m_ClMaxSwaps;
+	for(int i = 0; i < MAX_SWAPS; i++)
+	{
+		if(m_aSwapStates[i].m_Active)
+			ActiveCount++;
+	}
+	if(ActiveCount > MaxSwaps)
+		ActiveCount = MaxSwaps;
+
+	if(ActiveCount == 0)
+		return;
+
+	float FontSize = 5.0f;
+	float TeeSize = 7.0f;
+	float Y = 285.0f - (ActiveCount - 1) * (TeeSize + 4.0f);
+
+	int RenderedCount = 0;
+	for(int i = 0; i < MAX_SWAPS; i++)
+	{
+		if(!m_aSwapStates[i].m_Active)
+			continue;
+
+		if(RenderedCount >= MaxSwaps)
+			break;
+
+		int FromCid = m_aSwapStates[i].m_FromClientId;
+		int ToCid = m_aSwapStates[i].m_ToClientId;
+		if(FromCid >= 0 && FromCid < MAX_CLIENTS && !GameClient()->m_Snap.m_aCharacters[FromCid].m_Active)
+		{
+			m_aSwapStates[i].m_Active = false;
+			continue;
+		}
+		if(ToCid >= 0 && ToCid < MAX_CLIENTS && !GameClient()->m_Snap.m_aCharacters[ToCid].m_Active)
+		{
+			m_aSwapStates[i].m_Active = false;
+			continue;
+		}
+
+		int64_t Now = time_get();
+		float Elapsed = (float)(Now - m_aSwapStates[i].m_Time) / (float)time_freq();
+		int TotalTimeout = m_SwapTimeoutValue + m_aSwapStates[i].m_DelaySeconds;
+		if(Elapsed >= (float)TotalTimeout)
+		{
+			m_aSwapStates[i].m_Active = false;
+			continue;
+		}
+
+		float WaitLeft = (float)m_aSwapStates[i].m_DelaySeconds - Elapsed;
+		float TimeLeft = (float)TotalTimeout - Elapsed;
+		if(TimeLeft < 0.0f)
+			TimeLeft = 0.0f;
+
+		int WaitSeconds = (int)ceil(WaitLeft);
+		int TimeLeftSeconds = (int)ceil(TimeLeft);
+
+		char aTimeBuf[64];
+		if(WaitSeconds > 0)
+			str_format(aTimeBuf, sizeof(aTimeBuf), "(wait %ds)", WaitSeconds);
+		else
+			str_format(aTimeBuf, sizeof(aTimeBuf), "(%ds left)", TimeLeftSeconds);
+
+		float FromNameWidth = TextRender()->TextWidth(FontSize, m_aSwapStates[i].m_aFromName, -1, -1.0f);
+		float ArrowWidth = TextRender()->TextWidth(FontSize, " -> ", -1, -1.0f);
+		float SpaceWidth = TextRender()->TextWidth(FontSize, " ", -1, -1.0f);
+		float ToNameWidth = TextRender()->TextWidth(FontSize, m_aSwapStates[i].m_aToName, -1, -1.0f);
+		float TimeWidth = TextRender()->TextWidth(FontSize, aTimeBuf, -1, -1.0f);
+
+		float TotalWidth = (TeeSize - 1.0f) + FromNameWidth + ArrowWidth + SpaceWidth + (TeeSize - 1.0f) + ToNameWidth + 3.0f + TimeWidth;
+
+		float X = m_Width - TotalWidth - 10.0f;
+		float ItemY = Y + RenderedCount * (TeeSize + 4.0f);
+
+		float CurX = X;
+
+		float RenderTeeSize = g_Config.m_ClFatSkins ? TeeSize / 1.3f : TeeSize;
+		float OffsetY = g_Config.m_ClFatSkins ? 0.8f : 0.0f;
+
+		if(m_aSwapStates[i].m_FromClientId >= 0 && m_aSwapStates[i].m_FromClientId < MAX_CLIENTS && GameClient()->m_aClients[m_aSwapStates[i].m_FromClientId].m_Active)
+		{
+			CTeeRenderInfo TeeInfo = GameClient()->m_aClients[m_aSwapStates[i].m_FromClientId].m_RenderInfo;
+			TeeInfo.m_Size = RenderTeeSize;
+			vec2 OffsetToMid;
+			CRenderTools::GetRenderTeeOffsetToRenderedTee(CAnimState::GetIdle(), &TeeInfo, OffsetToMid);
+			vec2 TeePos = vec2(CurX + (TeeSize - 1.0f) / 2.0f, ItemY + TeeSize / 2.0f + OffsetToMid.y + OffsetY);
+			RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeInfo, EMOTE_NORMAL, vec2(1.0f, 0.0f), TeePos);
+		}
+		CurX += TeeSize - 1.0f;
+
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		TextRender()->Text(CurX, ItemY + (TeeSize - FontSize) / 2.0f, FontSize, m_aSwapStates[i].m_aFromName, -1.0f);
+		CurX += FromNameWidth;
+
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		TextRender()->Text(CurX, ItemY + (TeeSize - FontSize) / 2.0f, FontSize, " -> ", -1.0f);
+		CurX += ArrowWidth;
+		CurX += SpaceWidth;
+
+		if(m_aSwapStates[i].m_ToClientId >= 0 && m_aSwapStates[i].m_ToClientId < MAX_CLIENTS && GameClient()->m_aClients[m_aSwapStates[i].m_ToClientId].m_Active)
+		{
+			CTeeRenderInfo TeeInfo = GameClient()->m_aClients[m_aSwapStates[i].m_ToClientId].m_RenderInfo;
+			TeeInfo.m_Size = RenderTeeSize;
+			vec2 OffsetToMid;
+			CRenderTools::GetRenderTeeOffsetToRenderedTee(CAnimState::GetIdle(), &TeeInfo, OffsetToMid);
+			vec2 TeePos = vec2(CurX + (TeeSize - 1.0f) / 2.0f, ItemY + TeeSize / 2.0f + OffsetToMid.y + OffsetY);
+			RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeInfo, EMOTE_NORMAL, vec2(1.0f, 0.0f), TeePos);
+		}
+		CurX += TeeSize - 1.0f;
+
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		TextRender()->Text(CurX, ItemY + (TeeSize - FontSize) / 2.0f, FontSize, m_aSwapStates[i].m_aToName, -1.0f);
+		CurX += ToNameWidth + 3.0f;
+
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		TextRender()->Text(CurX, ItemY + (TeeSize - FontSize) / 2.0f, FontSize, aTimeBuf, -1.0f);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+		RenderedCount++;
 	}
 }

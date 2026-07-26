@@ -1172,6 +1172,12 @@ void CGameClient::OnMessage(int MsgId, CUnpacker *pUnpacker, int Conn, bool Dumm
 		return;
 	}
 
+	if(MsgId == NETMSGTYPE_SV_CHAT)
+	{
+		CNetMsg_Sv_Chat *pMsg = (CNetMsg_Sv_Chat *)pRawMsg;
+		ProcessSwapMessage(pMsg->m_pMessage, Conn);
+	}
+
 	if(Dummy)
 	{
 		if(MsgId == NETMSGTYPE_SV_CHAT && m_aLocalIds[0] >= 0 && m_aLocalIds[1] >= 0)
@@ -1348,6 +1354,334 @@ void CGameClient::OnMessage(int MsgId, CUnpacker *pUnpacker, int Conn, bool Dumm
 	{
 		CNetMsg_Sv_MapInfo *pMsg = static_cast<CNetMsg_Sv_MapInfo *>(pRawMsg);
 		str_copy(m_aMapDescription, pMsg->m_pDescription);
+	}
+}
+
+int CGameClient::GetMainClientId() const
+{
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(m_aClients[i].m_Active && str_comp(m_aClients[i].m_aName, Client()->PlayerName()) == 0)
+			return i;
+	}
+	return -1;
+}
+
+int CGameClient::GetDummyClientId() const
+{
+	if(!Client()->DummyConnected())
+		return -1;
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(m_aClients[i].m_Active && str_comp(m_aClients[i].m_aName, Client()->DummyName()) == 0)
+			return i;
+	}
+	return -1;
+}
+
+void CGameClient::ProcessSwapMessage(const char *pMsg, int Conn)
+{
+	if(!pMsg || !pMsg[0])
+		return;
+
+	int MainCid = GetMainClientId();
+	int DummyCid = GetDummyClientId();
+	bool IsDummyConn = (Conn == 1);
+
+	const char *pReqTarget = str_find(pMsg, " has requested to swap with you.");
+	if(pReqTarget)
+	{
+		int SenderLength = (int)(pReqTarget - pMsg);
+		if(SenderLength > 0 && SenderLength < MAX_NAME_LENGTH)
+		{
+			char aSender[MAX_NAME_LENGTH];
+			mem_copy(aSender, pMsg, SenderLength);
+			aSender[SenderLength] = 0;
+
+			int TargetCid = IsDummyConn ? DummyCid : MainCid;
+			if(TargetCid >= 0 && TargetCid < MAX_CLIENTS && m_aClients[TargetCid].m_Active)
+			{
+				int SenderCid = -1;
+				for(int i = 0; i < MAX_CLIENTS; i++)
+				{
+					if(m_aClients[i].m_Active && str_comp(m_aClients[i].m_aName, aSender) == 0)
+					{
+						SenderCid = i;
+						break;
+					}
+				}
+
+				AddSwapRequest(aSender, m_aClients[TargetCid].m_aName, SenderCid, TargetCid, 30);
+			}
+		}
+		return;
+	}
+
+	const char *pReqSelf = str_find(pMsg, "You have requested to swap with ");
+	if(pReqSelf)
+	{
+		const char *pTargetStart = pReqSelf + 32;
+		const char *pDot = str_find(pTargetStart, ". Use /cancelswap");
+		if(pDot)
+		{
+			int TargetLength = (int)(pDot - pTargetStart);
+			if(TargetLength > 0 && TargetLength < MAX_NAME_LENGTH)
+			{
+				char aTarget[MAX_NAME_LENGTH];
+				mem_copy(aTarget, pTargetStart, TargetLength);
+				aTarget[TargetLength] = 0;
+
+				int FromCid = IsDummyConn ? DummyCid : MainCid;
+				if(FromCid >= 0 && FromCid < MAX_CLIENTS && m_aClients[FromCid].m_Active)
+				{
+					int ToCid = -1;
+					for(int i = 0; i < MAX_CLIENTS; i++)
+					{
+						if(m_aClients[i].m_Active && str_comp(m_aClients[i].m_aName, aTarget) == 0)
+						{
+							ToCid = i;
+							break;
+						}
+					}
+
+					AddSwapRequest(m_aClients[FromCid].m_aName, aTarget, FromCid, ToCid, 30);
+				}
+			}
+		}
+		return;
+	}
+
+	const char *pReqTeam = str_find(pMsg, " has requested to swap with ");
+	if(pReqTeam)
+	{
+		int FromLength = (int)(pReqTeam - pMsg);
+		if(FromLength > 0 && FromLength < MAX_NAME_LENGTH)
+		{
+			char aFrom[MAX_NAME_LENGTH];
+			mem_copy(aFrom, pMsg, FromLength);
+			aFrom[FromLength] = 0;
+
+			const char *pToStart = pReqTeam + 28;
+			int ToLength = str_length(pToStart) - 1;
+			if(ToLength > 0 && ToLength < MAX_NAME_LENGTH)
+			{
+				char aTo[MAX_NAME_LENGTH];
+				mem_copy(aTo, pToStart, ToLength);
+				aTo[ToLength] = 0;
+
+				int FromCid = -1, ToCid = -1;
+				for(int i = 0; i < MAX_CLIENTS; i++)
+				{
+					if(m_aClients[i].m_Active)
+					{
+						if(str_comp(m_aClients[i].m_aName, aFrom) == 0)
+							FromCid = i;
+						if(str_comp(m_aClients[i].m_aName, aTo) == 0)
+							ToCid = i;
+					}
+				}
+
+				if(FromCid == MainCid || FromCid == DummyCid || ToCid == MainCid || ToCid == DummyCid)
+				{
+					AddSwapRequest(aFrom, aTo, FromCid, ToCid, 30);
+				}
+			}
+		}
+		return;
+	}
+
+	const char *pSwapped = str_find(pMsg, " has swapped with ");
+	if(pSwapped)
+	{
+		int Name1Len = pSwapped - pMsg;
+		if(Name1Len > 0 && Name1Len < MAX_NAME_LENGTH)
+		{
+			char aName1[MAX_NAME_LENGTH];
+			mem_copy(aName1, pMsg, Name1Len);
+			aName1[Name1Len] = 0;
+
+			const char *pName2Start = pSwapped + 18;
+			int Name2Len = str_length(pName2Start) - 1;
+			if(Name2Len > 0 && Name2Len < MAX_NAME_LENGTH)
+			{
+				char aName2[MAX_NAME_LENGTH];
+				mem_copy(aName2, pName2Start, Name2Len);
+				aName2[Name2Len] = 0;
+
+				RemoveSwapRequest(aName1, aName2);
+			}
+		}
+		return;
+	}
+
+	const char *pCanceledSelf = str_find(pMsg, "You have canceled swap with ");
+	if(pCanceledSelf)
+	{
+		const char *pTargetStart = pCanceledSelf + 28;
+		int TargetLen = str_length(pTargetStart) - 1;
+		if(TargetLen > 0 && TargetLen < MAX_NAME_LENGTH)
+		{
+			char aTarget[MAX_NAME_LENGTH];
+			mem_copy(aTarget, pTargetStart, TargetLen);
+			aTarget[TargetLen] = 0;
+
+			int LocalCid = IsDummyConn ? DummyCid : MainCid;
+			if(LocalCid >= 0 && LocalCid < MAX_CLIENTS && m_aClients[LocalCid].m_Active)
+			{
+				RemoveSwapRequest(m_aClients[LocalCid].m_aName, aTarget);
+			}
+		}
+		return;
+	}
+
+	const char *pCanceledOther = str_find(pMsg, " has canceled swap with you.");
+	if(pCanceledOther)
+	{
+		int SenderLen = pCanceledOther - pMsg;
+		if(SenderLen > 0 && SenderLen < MAX_NAME_LENGTH)
+		{
+			char aSender[MAX_NAME_LENGTH];
+			mem_copy(aSender, pMsg, SenderLen);
+			aSender[SenderLen] = 0;
+
+			int LocalCid = IsDummyConn ? DummyCid : MainCid;
+			if(LocalCid >= 0 && LocalCid < MAX_CLIENTS && m_aClients[LocalCid].m_Active)
+			{
+				RemoveSwapRequest(aSender, m_aClients[LocalCid].m_aName);
+			}
+		}
+		return;
+	}
+
+	const char *pCanceledTeam = str_find(pMsg, " has canceled swap with ");
+	if(pCanceledTeam)
+	{
+		int FromLength = (int)(pCanceledTeam - pMsg);
+		if(FromLength > 0 && FromLength < MAX_NAME_LENGTH)
+		{
+			char aFrom[MAX_NAME_LENGTH];
+			mem_copy(aFrom, pMsg, FromLength);
+			aFrom[FromLength] = 0;
+
+			const char *pToStart = pCanceledTeam + 24;
+			int ToLength = str_length(pToStart) - 1;
+			if(ToLength > 0 && ToLength < MAX_NAME_LENGTH)
+			{
+				char aTo[MAX_NAME_LENGTH];
+				mem_copy(aTo, pToStart, ToLength);
+				aTo[ToLength] = 0;
+
+				RemoveSwapRequest(aFrom, aTo);
+			}
+		}
+		return;
+	}
+
+	const char *pTimeOut = str_find(pMsg, "'s swap request timed out.");
+	if(pTimeOut)
+	{
+		int NameLen = (int)(pTimeOut - pMsg);
+		if(NameLen > 0 && NameLen < MAX_NAME_LENGTH)
+		{
+			char aName[MAX_NAME_LENGTH];
+			mem_copy(aName, pMsg, NameLen);
+			aName[NameLen] = 0;
+
+			for(int i = 0; i < CHud::MAX_SWAPS; i++)
+			{
+				if(m_Hud.m_aSwapStates[i].m_Active && str_comp(m_Hud.m_aSwapStates[i].m_aFromName, aName) == 0)
+				{
+					float Elapsed = (float)(time_get() - m_Hud.m_aSwapStates[i].m_Time) / (float)time_freq();
+					int Measured = (int)round(Elapsed);
+					int LearnedTimeout = Measured - m_Hud.m_aSwapStates[i].m_DelaySeconds;
+					if(LearnedTimeout > 10 && LearnedTimeout < 3600)
+					{
+						m_Hud.m_SwapTimeoutValue = LearnedTimeout;
+					}
+					m_Hud.m_aSwapStates[i].m_Active = false;
+				}
+			}
+		}
+		return;
+	}
+
+	if(str_find(pMsg, "timed out"))
+	{
+		if(MainCid >= 0 && m_aClients[MainCid].m_Active)
+		{
+			for(int i = 0; i < CHud::MAX_SWAPS; i++)
+			{
+				if(m_Hud.m_aSwapStates[i].m_Active)
+				{
+					if(str_comp(m_Hud.m_aSwapStates[i].m_aFromName, m_aClients[MainCid].m_aName) == 0 ||
+					   str_comp(m_Hud.m_aSwapStates[i].m_aToName, m_aClients[MainCid].m_aName) == 0)
+					{
+						m_Hud.m_aSwapStates[i].m_Active = false;
+					}
+				}
+			}
+		}
+		if(DummyCid >= 0 && m_aClients[DummyCid].m_Active)
+		{
+			for(int i = 0; i < CHud::MAX_SWAPS; i++)
+			{
+				if(m_Hud.m_aSwapStates[i].m_Active)
+				{
+					if(str_comp(m_Hud.m_aSwapStates[i].m_aFromName, m_aClients[DummyCid].m_aName) == 0 ||
+					   str_comp(m_Hud.m_aSwapStates[i].m_aToName, m_aClients[DummyCid].m_aName) == 0)
+					{
+						m_Hud.m_aSwapStates[i].m_Active = false;
+					}
+				}
+			}
+		}
+	}
+}
+
+void CGameClient::AddSwapRequest(const char *pFromName, const char *pToName, int FromCid, int ToCid, int Delay)
+{
+	for(int i = 0; i < CHud::MAX_SWAPS; i++)
+	{
+		if(m_Hud.m_aSwapStates[i].m_Active &&
+		   str_comp(m_Hud.m_aSwapStates[i].m_aFromName, pFromName) == 0 &&
+		   str_comp(m_Hud.m_aSwapStates[i].m_aToName, pToName) == 0)
+		{
+			m_Hud.m_aSwapStates[i].m_Time = time_get();
+			m_Hud.m_aSwapStates[i].m_DelaySeconds = Delay;
+			m_Hud.m_aSwapStates[i].m_FromClientId = FromCid;
+			m_Hud.m_aSwapStates[i].m_ToClientId = ToCid;
+			return;
+		}
+	}
+
+	for(int i = 0; i < CHud::MAX_SWAPS; i++)
+	{
+		if(!m_Hud.m_aSwapStates[i].m_Active)
+		{
+			m_Hud.m_aSwapStates[i].m_Active = true;
+			m_Hud.m_aSwapStates[i].m_FromClientId = FromCid;
+			m_Hud.m_aSwapStates[i].m_ToClientId = ToCid;
+			str_copy(m_Hud.m_aSwapStates[i].m_aFromName, pFromName);
+			str_copy(m_Hud.m_aSwapStates[i].m_aToName, pToName);
+			m_Hud.m_aSwapStates[i].m_Time = time_get();
+			m_Hud.m_aSwapStates[i].m_DelaySeconds = Delay;
+			return;
+		}
+	}
+}
+
+void CGameClient::RemoveSwapRequest(const char *pName1, const char *pName2)
+{
+	for(int i = 0; i < CHud::MAX_SWAPS; i++)
+	{
+		if(m_Hud.m_aSwapStates[i].m_Active)
+		{
+			if((str_comp(m_Hud.m_aSwapStates[i].m_aFromName, pName1) == 0 && str_comp(m_Hud.m_aSwapStates[i].m_aToName, pName2) == 0) ||
+			   (str_comp(m_Hud.m_aSwapStates[i].m_aFromName, pName2) == 0 && str_comp(m_Hud.m_aSwapStates[i].m_aToName, pName1) == 0))
+			{
+				m_Hud.m_aSwapStates[i].m_Active = false;
+			}
+		}
 	}
 }
 
@@ -1553,6 +1887,19 @@ void CGameClient::ProcessEvents()
 		{
 			const CNetEvent_Death *pEvent = (const CNetEvent_Death *)Item.m_pData;
 			m_Effects.PlayerDeath(vec2(pEvent->m_X, pEvent->m_Y), pEvent->m_ClientId, Alpha);
+
+			int DiedCid = pEvent->m_ClientId;
+			if(DiedCid >= 0 && DiedCid < MAX_CLIENTS)
+			{
+				for(int i = 0; i < CHud::MAX_SWAPS; i++)
+				{
+					if(m_Hud.m_aSwapStates[i].m_Active &&
+					   (m_Hud.m_aSwapStates[i].m_FromClientId == DiedCid || m_Hud.m_aSwapStates[i].m_ToClientId == DiedCid))
+					{
+						m_Hud.m_aSwapStates[i].m_Active = false;
+					}
+				}
+			}
 		}
 		else if(Item.m_Type == NETEVENTTYPE_SOUNDWORLD)
 		{

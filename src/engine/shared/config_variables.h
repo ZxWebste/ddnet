@@ -724,7 +724,7 @@ MACRO_CONFIG_COL(ClHookCollColorTeeColl, cl_hook_coll_color_tee_coll, 2817919, C
 MACRO_CONFIG_COL(ClHookCollTipColor, cl_hook_coll_tip_color, 2150367104, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Specifies the color of the hookline tip")
 
 MACRO_CONFIG_INT(ClChatTeamColors, cl_chat_teamcolors, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show names in chat in team colors")
-MACRO_CONFIG_INT(ClChatReset, cl_chat_reset, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Reset chat when pressing escape")
+MACRO_CONFIG_INT(ClChatReset, cl_chat_reset, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Reset chat when pressing escape")
 MACRO_CONFIG_INT(ClChatOld, cl_chat_old, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Old chat style: No tee, no background")
 MACRO_CONFIG_INT(ClChatFontSize, cl_chat_size, 60, 10, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat font size")
 MACRO_CONFIG_INT(ClChatWidth, cl_chat_width, 200, 140, 400, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat width")
@@ -787,3 +787,5 @@ MACRO_CONFIG_INT(ClVideoRecorderFPS, cl_video_recorder_fps, 60, 1, 1000, CFGFLAG
 /*
  * Add config variables for mods below this comment to avoid merge conflicts.
  */
+MACRO_CONFIG_INT(ClMaxSwaps, cl_max_swaps, 0, 0, 4, CFGFLAG_SAVE | CFGFLAG_CLIENT, "Max concurrent swaps (0 = infinite/4, 1-4 = limit)")
+MACRO_CONFIG_INT(ClLimitMaxDistance, cl_limit_max_distance, 0, 0, 2, CFGFLAG_SAVE | CFGFLAG_CLIENT, "Max mouse distance mode (0 = default, 1 = hook length * zoom, 2 = mouse max distance * zoom)")
