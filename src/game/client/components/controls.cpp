@@ -477,11 +477,11 @@ float CControls::GetMaxMouseDistance() const
 		{
 			HookLength = GameClient()->m_aClients[LocalId].m_Predicted.m_Tuning.m_HookLength;
 		}
-		return HookLength * Zoom;
+		return HookLength / Zoom;
 	}
 	else if(g_Config.m_ClLimitMaxDistance == 2)
 	{
-		return g_Config.m_ClMouseMaxDistance * Zoom;
+		return g_Config.m_ClMouseMaxDistance / Zoom;
 	}
 
 	float CameraMaxDistance = 200.0f;
